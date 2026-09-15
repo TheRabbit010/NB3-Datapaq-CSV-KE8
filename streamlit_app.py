@@ -9,7 +9,7 @@ import streamlit as st
 
 # 1. ตั้งค่า Page Config
 st.set_page_config(
-    page_title="Datapaq NB1",
+    page_title="Datapaq NB3 KE8",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -187,7 +187,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 3. แสดงชื่อโปรแกรมหลัก
-st.title("🏭 Datapaq NB1")
+st.title("🏭 Datapaq NB3 KE8")
 
 # 4. ฟังก์ชันแปลงวินาทีเป็นรูปแบบ mm:ss หรือ hh:mm:ss
 def format_seconds_to_time(total_seconds):
@@ -658,7 +658,7 @@ if uploaded_files:
 
             short_pb_name = f"PB#{p_num}"
             
-            # Max Temp (คงเดิมตามที่คุณระบุไว้)
+            # Max Temp
             br_max = f"{brazing_max_subset[col_name].max():.1f}" if not brazing_max_subset.empty else "0.0"
             db_max = f"{debinder_subset[col_name].max():.1f}" if not debinder_subset.empty else "0.0"
             d_max = f"{dryer_subset[col_name].max():.1f}" if not dryer_subset.empty else "0.0"
@@ -723,7 +723,7 @@ if uploaded_files:
             with col_opt1:
                 custom_filename = st.text_input(
                     "ตั้งชื่อไฟล์ดาวน์โหลด:", 
-                    value="datapaq_nb1_8probes_data.xlsx"
+                    value="datapaq_nb3_ke8_8probes_data.xlsx"
                 )
                 if not custom_filename.endswith('.xlsx'):
                     custom_filename += '.xlsx'
