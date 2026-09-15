@@ -217,7 +217,7 @@ def hex_to_rgba(hex_str, opacity=0.25):
     b = int(hex_str[4:6], 16)
     return f"rgba({r}, {g}, {b}, {opacity})"
 
-# 5. ฟังก์ชันอ่านไฟล์ CSV (แก้ปัญหาวินาทีติดลบที่ทำให้ข้อมูลทับซ้อนกัน)
+# 5. ฟังก์ชันอ่านไฟล์ CSV แบบตัดเวลาติดลบ (ข้อมูลก่อนเข้าเตา)
 def parse_single_file(uploaded_file):
     uploaded_file.seek(0)
     raw_bytes = uploaded_file.read()
@@ -243,8 +243,7 @@ def parse_single_file(uploaded_file):
         "paqfile start time": "-",
         "title": "-",
         "operator": "-",
-        "product": "-",
-        "raw_text": text_content
+        "product": "-"
     }
 
     for line in lines:
@@ -277,7 +276,7 @@ def parse_single_file(uploaded_file):
                 try:
                     time_str = parts[0].strip()
                     
-                    # 📌 FIX: ข้ามการอ่านข้อมูลที่มีเวลาติดลบ (เช่น -00:06:50) เพื่อไม่ให้กราฟแบนราบ
+                    # ตัดแถวที่มีเวลาติดลบทิ้ง ป้องกันกราฟแบนราบ
                     if time_str.startswith("-"):
                         continue
                         
@@ -358,7 +357,6 @@ if st.sidebar.button("🧹 เคลียร์ข้อมูลไฟล์�
     st.cache_data.clear()
     st.rerun()
 
-# 📌 อัปโหลดและรับแค่ 1 ไฟล์
 uploaded_file = st.sidebar.file_uploader(
     "อัปโหลดไฟล์ CSV (.csv)", 
     type=["csv"],
@@ -376,16 +374,6 @@ if uploaded_file:
 
         st.sidebar.markdown("---")
         st.sidebar.header("🎛️ Dynamic Controls")
-        
-        raw_text_meta = (metadata.get("raw_text", "") + " " + metadata.get("title", "")).upper()
-        if "16XHP" in raw_text_meta or "16" in uploaded_file.name.upper():
-            default_dryer_end = 270
-            default_db_start = 330
-            default_db_end = 840
-        else:
-            default_dryer_end = 271
-            default_db_start = 298
-            default_db_end = 841
 
         color_shading_mode = st.sidebar.radio(
             "เลือกโหมดแสดงสี:",
@@ -608,12 +596,13 @@ if uploaded_file:
         # ---------------------------------------------------------
         st.markdown("### 📊 ตารางสรุปผลการวิเคราะห์ (Data Table for Google Sheets Copy)")
 
-        dryer_subset = df[(df["ElapsedSeconds"] >= 0) & (df["ElapsedSeconds"] <= default_dryer_end)]
+        # 📌 จำกัดขอบเขตเวลาของ Dryer ที่ 300 วินาทีตามสเปกมาตรฐาน
+        dryer_max_sec = 300 
         
+        dryer_subset = df[(df["ElapsedSeconds"] >= 0) & (df["ElapsedSeconds"] <= dryer_max_sec)]
         brazing_ht_subset = df[(df["ElapsedSeconds"] >= 0)]
         brazing_max_subset = df[(df["ElapsedSeconds"] >= 900) & (df["ElapsedSeconds"] <= 1750)]
 
-        # ลำดับ Probe: 1, 2, 3, 4, 5, 6, 7, 8
         probe_order = [1, 2, 3, 4, 5, 6, 7, 8]
         ordered_cols = []
         for p_num in probe_order:
