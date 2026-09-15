@@ -219,7 +219,7 @@ def hex_to_rgba(hex_str, opacity=0.25):
     b = int(hex_str[4:6], 16)
     return f"rgba({r}, {g}, {b}, {opacity})"
 
-# 5. ฟังก์ชันอ่านไฟล์ CSV และดึงข้อมูล
+# 5. ฟังก์ชันอ่านไฟล์ CSV และดึงข้อมูลแบบแยกเดี่ยว
 def parse_single_file(uploaded_file):
     uploaded_file.seek(0)
     raw_bytes = uploaded_file.read()
@@ -316,25 +316,9 @@ def parse_single_file(uploaded_file):
             
         parsed_data.append(row_dict)
 
-    return pd.DataFrame(parsed_data), metadata
-
-def process_multiple_files(uploaded_files):
-    combined_dfs = []
-    first_metadata = None
-    
-    for file in uploaded_files:
-        df_single, meta_single = parse_single_file(file)
-        if not df_single.empty:
-            combined_dfs.append(df_single)
-            if first_metadata is None:
-                first_metadata = meta_single
-            
-    if not combined_dfs:
-        return pd.DataFrame(), {}
-
-    full_df = pd.concat(combined_dfs, ignore_index=True)
-    full_df = full_df.sort_values("ElapsedSeconds").reset_index(drop=True)
-    return full_df, first_metadata
+    df_res = pd.DataFrame(parsed_data)
+    df_res = df_res.drop_duplicates(subset=["ElapsedSeconds"]).sort_values("ElapsedSeconds").reset_index(drop=True)
+    return df_res, metadata
 
 # ฟังก์ชันแปลง DataFrame + Summary Table + แนบรูปกราฟลงในไฟล์ Excel (.xlsx)
 def to_excel_bytes(dataframe, summary_dataframe=None, fig_plotly=None):
@@ -381,18 +365,27 @@ uploaded_files = st.sidebar.file_uploader(
 
 # 7. แสดงผล Header Metadata + กราฟพร้อมโซนเวลา
 if uploaded_files:
-    df, metadata = process_multiple_files(uploaded_files)
+    # 📌 เลือกระหว่างไฟล์กรณีมีการอัปโหลดหลายไฟล์ เพื่อไม่ให้เวลากราฟชนกัน
+    if len(uploaded_files) > 1:
+        file_names = [f.name for f in uploaded_files]
+        selected_file_name = st.sidebar.selectbox("📄 เลือกไฟล์ที่ต้องการวิเคราะห์:", file_names)
+        selected_file = [f for f in uploaded_files if f.name == selected_file_name][0]
+    else:
+        selected_file = uploaded_files[0]
+
+    df, metadata = parse_single_file(selected_file)
     
     if df.empty:
         st.error("⚠️ ไม่สามารถอ่านข้อมูลจากไฟล์ที่อัปโหลดได้ กรุณาตรวจสอบว่าเป็นไฟล์ CSV จาก Datapaq หรือไม่")
     else:
-        st.sidebar.success(f"รวมข้อมูลสำเร็จ {len(uploaded_files)} ไฟล์ ({len(df)} แถว)")
+        st.sidebar.success(f"โหลดไฟล์ {selected_file.name} สำเร็จ ({len(df)} แถว)")
 
         st.sidebar.markdown("---")
         st.sidebar.header("🎛️ Dynamic Controls")
         
-        raw_text_meta = metadata.get("raw_text", "").upper()
-        if "16XHP" in raw_text_meta:
+        # 📌 ระบบตรวจจับขอบเขตเวลาอัตโนมัติตาม Recipe Model ของไฟล์
+        raw_text_meta = (metadata.get("raw_text", "") + " " + metadata.get("title", "")).upper()
+        if "16XHP" in raw_text_meta or "16" in selected_file.name.upper():
             default_dryer_end = 270
             default_db_start = 330
             default_db_end = 840
@@ -627,6 +620,8 @@ if uploaded_files:
         st.markdown("### 📊 ตารางสรุปผลการวิเคราะห์ (Data Table for Google Sheets Copy)")
 
         dryer_subset = df[(df["ElapsedSeconds"] >= 0) & (df["ElapsedSeconds"] <= dryer_max_sec)]
+        debinder_subset = df[(df["ElapsedSeconds"] >= db_range_sec[0]) & (df["ElapsedSeconds"] <= db_range_sec[1])]
+        
         brazing_ht_subset = df[(df["ElapsedSeconds"] >= 0)]
         brazing_max_subset = df[(df["ElapsedSeconds"] >= 900) & (df["ElapsedSeconds"] <= 1750)]
 
