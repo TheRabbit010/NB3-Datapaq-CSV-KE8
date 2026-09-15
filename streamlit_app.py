@@ -243,7 +243,8 @@ def parse_single_file(uploaded_file):
         "paqfile start time": "-",
         "title": "-",
         "operator": "-",
-        "product": "-"
+        "product": "EVAPORATOR",
+        "note_1": "-"
     }
 
     for line in lines:
@@ -266,7 +267,9 @@ def parse_single_file(uploaded_file):
                 elif key.lower() == "operator":
                     metadata["operator"] = val
                 elif key.lower() == "product":
-                    metadata["product"] = val
+                    metadata["product"] = val if (val and val != "-") else "EVAPORATOR"
+                elif "note" in key.lower():
+                    metadata["note_1"] = val
                 elif key.isdigit():
                     ch_num = int(key)
                     probe_labels[ch_num] = val
@@ -433,7 +436,7 @@ if uploaded_file:
             st.markdown(f"""
                 <div class="raw-header-box">
                     <div><span class="raw-header-key">#operator</span> = <span class="raw-header-val">{metadata.get('operator', '-')}</span></div>
-                    <div><span class="raw-header-key">#product</span> = <span class="raw-header-val">{metadata.get('product', '-')}</span></div>
+                    <div><span class="raw-header-key">#product</span> = <span class="raw-header-val">{metadata.get('product', 'EVAPORATOR')}</span></div>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -590,6 +593,15 @@ if uploaded_file:
         )
 
         st.plotly_chart(fig, use_container_width=True)
+
+        # ---------------------------------------------------------
+        # 📝 กล่องแสดงข้อความ #note #1 ด้านล่างรูปภาพกราฟ
+        # ---------------------------------------------------------
+        st.markdown(f"""
+            <div class="raw-header-box" style="margin-top: -10px; margin-bottom: 25px;">
+                <div><span class="raw-header-key">#note #1</span> = <span class="raw-header-val">{metadata.get('note_1', '-')}</span></div>
+            </div>
+        """, unsafe_allow_html=True)
 
         # ---------------------------------------------------------
         # 📊 ตารางสรุปค่า
