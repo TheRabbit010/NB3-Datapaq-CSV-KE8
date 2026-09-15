@@ -204,6 +204,13 @@ def format_seconds_to_time(total_seconds):
     else:
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
+# ฟังก์ชันแปลงเวลาแบบ HH:MM:SS ให้เป็นวินาที
+def time_str_to_seconds(t_str):
+    parts = t_str.split(":")
+    if len(parts) == 3:
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    return 0
+
 # ฟังก์ชันแปลง Hex Color เป็น RGBA
 def hex_to_rgba(hex_str, opacity=0.25):
     hex_str = hex_str.lstrip('#')
@@ -384,22 +391,16 @@ if uploaded_files:
         st.sidebar.markdown("---")
         st.sidebar.header("🎛️ Dynamic Controls")
         
-        # 📌 ระบบตรวจจับขอบเขตเวลาอัตโนมัติตาม Recipe Model ของไฟล์
         raw_text_meta = metadata.get("raw_text", "").upper()
         if "16XHP" in raw_text_meta:
             default_dryer_end = 270
             default_db_start = 330
             default_db_end = 840
-            detected_model_name = "16XHP"
         else:
             default_dryer_end = 271
             default_db_start = 298
             default_db_end = 841
-            detected_model_name = "27XHP / SU2"
 
-        st.sidebar.info(f"🤖 ตรวจพบประเภทสูตรอัตโนมัติ: **{detected_model_name}**")
-
-        # 🎛️ เพิ่ม Slider ปรับแต่งช่วงวินาทีเพื่อ Fine-Tune เพิ่มเติมได้ถ้าต้องการ
         with st.sidebar.expander("🛠️ ปรับขอบเขตวินาทีของโซน (Optional Zone Boundaries)"):
             dryer_max_sec = st.slider("Dryer End Sec (วินาทีที่จบ Dryer):", 200, 350, default_dryer_end)
             db_range_sec = st.slider("Debinder Zone Sec (ช่วงวินาที Debinder):", 250, 900, (default_db_start, default_db_end))
@@ -410,13 +411,6 @@ if uploaded_files:
             index=0
         )
 
-        position_naming = st.sidebar.radio(
-            "เลือกรูปแบบชื่อตำแหน่งหัววัด (Location Name):",
-            ["Bottom / Top", "Right / Left"],
-            index=0
-        )
-
-        # 📌 ปรับปรุงโซนและสีตามคำขอใหม่ล่าสุด
         if color_shading_mode == "แสดงสีตามโซน (By Zone)":
             zones_data = [
                 {"Start Time": "00:00:00", "End Time": "00:00:04", "Zone Name": "XFER", "Color": "#F7DC6F"},
@@ -449,6 +443,12 @@ if uploaded_files:
             ]
             angle_setting = 0
 
+        # ตัดข้อมูลกราฟหลังช่วง Exit ออก
+        exit_end_seconds = time_str_to_seconds(zones_data[-1]["End Time"])
+        df_chart = df[df["ElapsedSeconds"] <= exit_end_seconds].copy()
+        if df_chart.empty:
+            df_chart = df.copy()
+
         # 📋 แสดงผล Header Metadata
         col_h1, col_h2 = st.columns(2)
         with col_h1:
@@ -475,12 +475,12 @@ if uploaded_files:
             "#FF00FF", "#DAA520", "#800080", "#00FFFF"
         ]
 
-        probe_cols = [c for c in df.columns if c.startswith("Probe #")]
+        probe_cols = [c for c in df_chart.columns if c.startswith("Probe #")]
         for idx, col in enumerate(probe_cols[:8]):
             fig.add_trace(
                 go.Scatter(
-                    x=df["Time (HH:MM:SS)"],
-                    y=df[col],
+                    x=df_chart["Time (HH:MM:SS)"],
+                    y=df_chart[col],
                     name=col,
                     mode="lines",
                     line=dict(color=probe_colors[idx % len(probe_colors)], width=2)
@@ -489,8 +489,8 @@ if uploaded_files:
 
         fig.add_trace(
             go.Scatter(
-                x=df["Distance (m)"],
-                y=[None] * len(df),
+                x=df_chart["Distance (m)"],
+                y=[None] * len(df_chart),
                 xaxis="x2",
                 showlegend=False,
                 hoverinfo="skip"
@@ -529,13 +529,13 @@ if uploaded_files:
             )
 
         # คำนวณช่วง Tick สำหรับแกน Time ให้เหมาะสม
-        step_tick = max(1, len(df) // 16)
-        tick_indices = list(range(0, len(df), step_tick))
-        if (len(df) - 1) not in tick_indices:
-            tick_indices.append(len(df) - 1)
+        step_tick = max(1, len(df_chart) // 16)
+        tick_indices = list(range(0, len(df_chart), step_tick))
+        if (len(df_chart) - 1) not in tick_indices and len(df_chart) > 0:
+            tick_indices.append(len(df_chart) - 1)
             
         # สร้างรายการ Tick สำหรับแกน Distance โดยเฉพาะ
-        max_dist = df["Distance (m)"].max() if not df.empty else 50.0
+        max_dist = df_chart["Distance (m)"].max() if not df_chart.empty else 50.0
         if max_dist <= 20:
             dist_dtick = 1.0
         elif max_dist <= 50:
@@ -573,7 +573,7 @@ if uploaded_files:
             xaxis=dict(
                 title=dict(text="Time (hh:mm:ss)", font=dict(color="#FFFFFF", size=11)),
                 tickmode="array",
-                tickvals=df.loc[tick_indices, "Time (HH:MM:SS)"].tolist(),
+                tickvals=df_chart.loc[tick_indices, "Time (HH:MM:SS)"].tolist(),
                 tickfont=dict(color="#CCCCCC", size=10),
                 showgrid=True,
                 gridcolor="rgba(255,255,255,0.08)",
@@ -622,22 +622,16 @@ if uploaded_files:
         st.plotly_chart(fig, use_container_width=True)
 
         # ---------------------------------------------------------
-        # 📊 ตารางสรุปค่า (อัปเดตใช้ช่วงเวลาตามสูตรที่ตรวจพบ)
+        # 📊 ตารางสรุปค่า
         # ---------------------------------------------------------
         st.markdown("### 📊 ตารางสรุปผลการวิเคราะห์ (Data Table for Google Sheets Copy)")
 
-        # 📌 การตัด Subset ตามสไลเดอร์/การตรวจจับสูตรอัตโนมัติ
         dryer_subset = df[(df["ElapsedSeconds"] >= 0) & (df["ElapsedSeconds"] <= dryer_max_sec)]
-        debinder_subset = df[(df["ElapsedSeconds"] >= db_range_sec[0]) & (df["ElapsedSeconds"] <= db_range_sec[1])]
-        
-        # Brazing Zone Dwell Time: สะสมเวลาทั้งไฟล์
         brazing_ht_subset = df[(df["ElapsedSeconds"] >= 0)]
-        
-        # Brazing Zone Max Temp: ช่วงแช่อุณหภูมิสูงสุด
         brazing_max_subset = df[(df["ElapsedSeconds"] >= 900) & (df["ElapsedSeconds"] <= 1750)]
 
-        # ลำดับ Probe ให้ตรงตามแม่แบบ: 1, 2, 3, 8, 4, 5, 6, 7
-        probe_order = [1, 2, 3, 8, 4, 5, 6, 7]
+        # ลำดับ Probe: 1, 2, 3, 4, 5, 6, 7, 8
+        probe_order = [1, 2, 3, 4, 5, 6, 7, 8]
         ordered_cols = []
         for p_num in probe_order:
             for c in probe_cols[:8]:
@@ -647,50 +641,49 @@ if uploaded_files:
 
         summary_rows = []
         for p_num, col_name in ordered_cols:
-            if position_naming == "Bottom / Top":
-                location = "Bottom" if p_num in [1, 2, 3, 8] else "Top"
+            if p_num in [1, 2]:
+                location = "Core Right"
+            elif p_num in [3, 4, 5]:
+                location = "Core Middle"
             else:
-                location = "Right" if p_num in [1, 2, 3, 8] else "Left"
+                location = "Core Left"
 
             short_pb_name = f"PB#{p_num}"
             
             # Max Temp
             br_max = f"{brazing_max_subset[col_name].max():.1f}" if not brazing_max_subset.empty else "0.0"
-            db_max = f"{debinder_subset[col_name].max():.1f}" if not debinder_subset.empty else "0.0"
             d_max = f"{dryer_subset[col_name].max():.1f}" if not dryer_subset.empty else "0.0"
             
             # Dwell Time
-            br_dwell_600 = (brazing_ht_subset[col_name] >= 600.0).sum() if not brazing_ht_subset.empty else 0
-            br_dwell_583 = (brazing_ht_subset[col_name] >= 583.0).sum() if not brazing_ht_subset.empty else 0
+            br_dwell_591 = (brazing_ht_subset[col_name] >= 591.0).sum() if not brazing_ht_subset.empty else 0
             br_dwell_577 = (brazing_ht_subset[col_name] >= 577.0).sum() if not brazing_ht_subset.empty else 0
+            br_dwell_550 = (brazing_ht_subset[col_name] >= 550.0).sum() if not brazing_ht_subset.empty else 0
             
-            db_dwell_200 = (debinder_subset[col_name] >= 200.0).sum() if not debinder_subset.empty else 0
-            d_dwell_175 = (dryer_subset[col_name] >= 175.0).sum() if not dryer_subset.empty else 0
+            d_dwell_200 = (dryer_subset[col_name] >= 200.0).sum() if not dryer_subset.empty else 0
+            d_dwell_150 = (dryer_subset[col_name] >= 150.0).sum() if not dryer_subset.empty else 0
 
             summary_rows.append([
                 location,
                 short_pb_name,
                 br_max,
-                db_max,
                 d_max,
-                format_seconds_to_time(br_dwell_600),
-                format_seconds_to_time(br_dwell_583),
+                format_seconds_to_time(br_dwell_591),
                 format_seconds_to_time(br_dwell_577),
-                format_seconds_to_time(db_dwell_200),
-                format_seconds_to_time(d_dwell_175)
+                format_seconds_to_time(br_dwell_550),
+                format_seconds_to_time(d_dwell_200),
+                format_seconds_to_time(d_dwell_150)
             ])
 
         multi_cols = pd.MultiIndex.from_tuples([
             ("", "Location"),
             ("", "Probe"),
             ("Max Temp (°C)", "Brazing"),
-            ("Max Temp (°C)", "Debinder"),
             ("Max Temp (°C)", "Dryer"),
-            ("Brazing Zone", "Dwell Time Above 600°C"),
-            ("Brazing Zone", "Dwell Time Above 583°C"),
+            ("Brazing Zone", "Dwell Time Above 591°C"),
             ("Brazing Zone", "Dwell Time Above 577°C"),
-            ("Debinder Zone", "Dwell Time Above 200°C"),
-            ("Dryer Zone", "Dwell Time Above 175°C")
+            ("Brazing Zone", "Dwell Time Above 550°C"),
+            ("Dryer Zone", "Dwell Time Above 200°C"),
+            ("Dryer Zone", "Dwell Time Above 150°C")
         ])
 
         display_summary_df = pd.DataFrame(summary_rows, columns=multi_cols)
@@ -701,10 +694,9 @@ if uploaded_files:
         st.markdown("""
             <div style="background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px 18px; font-size: 13px; color: #CCCCCC; margin-top: 10px;">
                 <b style="color: #F0B90B;">📌 เกณฑ์มาตรฐานอ้างอิง (Process Standards):</b><br>
-                • <b>Maximum Temperatures (°C):</b> Brazing (Corner Probes: <b>596 - 610 °C</b> | Center Probes #2, #5: <b>583 - 607 °C</b>) | Debinder: <b>200 - 375 °C</b> | Dryer: <b>175 - 260 °C</b><br>
-                • <b>Brazing Dwell Time (คิดช่วงเวลา 00:00:00 to 00:35:35):</b> Dwell Time Above 600°C: <b>< 4:00 min (<240s)</b> | Dwell Time Above 583°C & 577°C: <b>2:30 - 6:00 min (150s - 360s)</b><br>
-                • <b>Debinder Dwell Time:</b> Dwell Time Above 200°C: <b>> 2:00 min (>120s)</b><br>
-                • <b>Dryer Dwell Time:</b> Dwell Time Above 175°C: <b>> 1:00 min (>60s)</b>
+                • <b>Maximum Temperatures (°C):</b> Brazing Zone: <b>598 - 606 °C for EVO</b> | <b>595 - 606 °C for M2</b> | Dryer Zone: <b>200 - 375 °C</b><br>
+                • <b>Brazing Dwell Time:</b> Above 591°C: <b>1:30 - 4:00 min (90s - 240s)</b> | Above 577°C: <b>4:30 - 7:00 min (270s - 420s)</b> | Above 550°C: <b>7:00 - 10:30 min (420s - 630s)</b><br>
+                • <b>Dryer Dwell Time:</b> Above 200°C: <b>> 1:30 min (>90s)</b> | Above 150°C: <b>> 1:45 min (>105s)</b>
             </div>
         """, unsafe_allow_html=True)
 
