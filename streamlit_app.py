@@ -191,7 +191,7 @@ st.title("🏭 Datapaq NB3 KE8")
 
 # 4. ฟังก์ชันแปลงวินาทีเป็นรูปแบบ mm:ss หรือ hh:mm:ss
 def format_seconds_to_time(total_seconds):
-    if pd.isna(total_seconds) or total_seconds == 0:
+    if pd.isna(total_seconds) or total_seconds <= 0:
         return "00:00"
     
     total_sec = int(round(total_seconds))
@@ -219,7 +219,7 @@ def hex_to_rgba(hex_str, opacity=0.25):
     b = int(hex_str[4:6], 16)
     return f"rgba({r}, {g}, {b}, {opacity})"
 
-# 5. ฟังก์ชันอ่านไฟล์ CSV และดึงข้อมูลแบบแยกเดี่ยว
+# 5. ฟังก์ชันอ่านไฟล์ CSV แบบแยกเดี่ยวป้องกันข้อมูลซ้อนทับกัน
 def parse_single_file(uploaded_file):
     uploaded_file.seek(0)
     raw_bytes = uploaded_file.read()
@@ -373,17 +373,47 @@ if uploaded_files:
     else:
         selected_file = uploaded_files[0]
 
-    df, metadata = parse_single_file(selected_file)
+    df_raw, metadata = parse_single_file(selected_file)
     
-    if df.empty:
+    if df_raw.empty:
         st.error("⚠️ ไม่สามารถอ่านข้อมูลจากไฟล์ที่อัปโหลดได้ กรุณาตรวจสอบว่าเป็นไฟล์ CSV จาก Datapaq หรือไม่")
     else:
-        st.sidebar.success(f"โหลดไฟล์ {selected_file.name} สำเร็จ ({len(df)} แถว)")
+        st.sidebar.success(f"โหลดไฟล์ {selected_file.name} สำเร็จ ({len(df_raw)} แถว)")
 
         st.sidebar.markdown("---")
         st.sidebar.header("🎛️ Dynamic Controls")
         
-        # 📌 ระบบตรวจจับขอบเขตเวลาอัตโนมัติตาม Recipe Model ของไฟล์
+        # 📌 ระบบตัดช่วงเวลาอุณหภูมิห้องช่วงเริ่มต้นก่อนเข้าเตาอบจริง
+        auto_trim = st.sidebar.checkbox("✂️ ตัดเวลาอุณหภูมิห้องก่อนเข้าเตาอัตโนมัติ", value=True)
+        start_shift_sec = st.sidebar.slider("⏱️ ปรับเวลาเริ่มต้นเข้าเตา (Start Time Offset Sec):", 0, 600, 0)
+
+        df = df_raw.copy()
+        
+        # ประมวลผลตัดเวลาเริ่มต้นหากเลือกไว้
+        probe_cols = [c for c in df.columns if c.startswith("Probe #")]
+        if auto_trim and not df.empty:
+            max_temps = df[probe_cols].max(axis=1)
+            valid_idx = max_temps[max_temps >= 45.0].index
+            if len(valid_idx) > 0:
+                s_idx = max(0, valid_idx[0] - 3)
+                df = df.iloc[s_idx:].copy()
+                first_sec = df["ElapsedSeconds"].iloc[0]
+                df["ElapsedSeconds"] = df["ElapsedSeconds"] - first_sec
+
+        if start_shift_sec > 0 and not df.empty:
+            df = df[df["ElapsedSeconds"] >= start_shift_sec].copy()
+            first_sec = df["ElapsedSeconds"].iloc[0]
+            df["ElapsedSeconds"] = df["ElapsedSeconds"] - first_sec
+
+        def sec_to_hhmmss(s):
+            m, sec = divmod(s, 60)
+            h, m = divmod(m, 60)
+            return f"{h:02d}:{m:02d}:{sec:02d}"
+
+        df["Time (HH:MM:SS)"] = df["ElapsedSeconds"].apply(sec_to_hhmmss)
+        df = df.reset_index(drop=True)
+
+        # 📌 ตรวจจับขอบเขตเวลาอัตโนมัติตาม Recipe Model ของไฟล์
         raw_text_meta = (metadata.get("raw_text", "") + " " + metadata.get("title", "")).upper()
         if "16XHP" in raw_text_meta or "16" in selected_file.name.upper():
             default_dryer_end = 270
@@ -620,8 +650,6 @@ if uploaded_files:
         st.markdown("### 📊 ตารางสรุปผลการวิเคราะห์ (Data Table for Google Sheets Copy)")
 
         dryer_subset = df[(df["ElapsedSeconds"] >= 0) & (df["ElapsedSeconds"] <= dryer_max_sec)]
-        debinder_subset = df[(df["ElapsedSeconds"] >= db_range_sec[0]) & (df["ElapsedSeconds"] <= db_range_sec[1])]
-        
         brazing_ht_subset = df[(df["ElapsedSeconds"] >= 0)]
         brazing_max_subset = df[(df["ElapsedSeconds"] >= 900) & (df["ElapsedSeconds"] <= 1750)]
 
