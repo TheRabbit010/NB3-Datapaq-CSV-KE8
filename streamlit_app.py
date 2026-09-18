@@ -85,7 +85,7 @@ st.markdown("""
             font-weight: bold !important;
         }
 
-        /* สไตล์กล่องแสดง Header Metadata แบบ Raw Header */
+        /* สไตล์กล่องแสดง Header Metadata */
         .raw-header-box {
             background-color: #161b22;
             border: 1px solid #30363d;
@@ -122,7 +122,7 @@ st.markdown("""
             color: #ffffff !important;
         }
 
-        /* ปรับแต่งตาราง Dataframe & บังคับจัดข้อความ/ตัวเลขทุกช่องให้อยู่ตรงกลางทั้งหมด */
+        /* ปรับแต่งตาราง Dataframe */
         [data-testid="stDataFrame"], [data-testid="stTable"] {
             background-color: #161b22 !important;
             border: 1px solid #30363d !important;
@@ -157,7 +157,7 @@ st.markdown("""
             vertical-align: middle !important;
         }
 
-        /* ปรับแต่งปุ่มดาวน์โหลด Excel */
+        /* ปุ่มดาวน์โหลด Excel */
         div.stDownloadButton > button {
             background-color: #21262d !important;
             border: 1.5px solid #F0B90B !important;
@@ -217,7 +217,7 @@ def hex_to_rgba(hex_str, opacity=0.25):
     b = int(hex_str[4:6], 16)
     return f"rgba({r}, {g}, {b}, {opacity})"
 
-# 5. ฟังก์ชันอ่านไฟล์ CSV แบบรองรับสถานะ *OC* (Open Circuit) และตัดเวลาติดลบ
+# 5. ฟังก์ชันอ่านไฟล์ CSV แบบรองรับสถานะ *OC* และอ่านโพรบแบบไดนามิก (รองรับได้สูงสุด 10 โพรบ)
 def parse_single_file(uploaded_file):
     uploaded_file.seek(0)
     raw_bytes = uploaded_file.read()
@@ -282,7 +282,6 @@ def parse_single_file(uploaded_file):
                 try:
                     time_str = parts[0].strip()
                     
-                    # ตัดแถวที่มีเวลาติดลบทิ้ง ป้องกันกราฟแบนราบ
                     if time_str.startswith("-"):
                         continue
                         
@@ -297,17 +296,13 @@ def parse_single_file(uploaded_file):
                     except ValueError:
                         dist_val = 0.0
                         
-                    # แปลงค่าโพรบที่ไม่ใช่ตัวเลข (เช่น *OC*) เป็น np.nan
+                    # อ่านค่าโพรบทั้งหมดจากส่วนที่เหลือ (รองรับสูงสุด 10 โพรบ)
                     probe_vals = []
-                    for p in parts[2:10]:
+                    for p in parts[2:12]:
                         try:
                             probe_vals.append(float(p))
                         except ValueError:
                             probe_vals.append(np.nan)
-                    
-                    # เติม np.nan ให้ครบ 8 Probe หากแชนแนลเปิดไม่ครบ
-                    while len(probe_vals) < 8:
-                        probe_vals.append(np.nan)
                     
                     data_rows.append({
                         "elapsed_sec": elapsed_sec,
@@ -321,6 +316,10 @@ def parse_single_file(uploaded_file):
     if not data_rows:
         return pd.DataFrame(), metadata
 
+    # คำนวณจำนวนโพรบที่มีจริงในไฟล์
+    max_probes = max(len(r["probes"]) for r in data_rows)
+    max_probes = max(max_probes, 8)  # อย่างน้อย 8 โพรบ
+
     parsed_data = []
     for row in data_rows:
         row_dict = {
@@ -328,12 +327,14 @@ def parse_single_file(uploaded_file):
             "Time (HH:MM:SS)": row["time_str"],
             "Distance (m)": round(row["dist_val"], 2)
         }
-        for i in range(1, 9):
+        for i in range(1, max_probes + 1):
             col_label = f"Probe #{i}"
             if i in probe_labels:
                 lbl = probe_labels[i]
                 col_label = f"Probe #{i}: {lbl[:15]}..." if len(lbl) > 15 else f"Probe #{i}: {lbl}"
-            row_dict[col_label] = row["probes"][i-1]
+            
+            p_val = row["probes"][i-1] if (i-1) < len(row["probes"]) else np.nan
+            row_dict[col_label] = p_val
             
         parsed_data.append(row_dict)
 
@@ -359,7 +360,7 @@ def to_excel_bytes(dataframe, summary_dataframe=None, fig_plotly=None):
             ws = wb['Parameter Summary'] if 'Parameter Summary' in wb.sheetnames else wb.active
             
             img = openpyxl.drawing.image.Image(img_buf)
-            img.anchor = 'A12'
+            img.anchor = 'A14'
             ws.add_image(img)
             
             output = io.BytesIO()
@@ -383,12 +384,12 @@ uploaded_file = st.sidebar.file_uploader(
     accept_multiple_files=False
 )
 
-# 7. แสดงผล Header Metadata + กราฟพร้อมโซนเวลา
+# 7. แสดงผล Header Metadata + กราฟพร้อมตารางสรุป
 if uploaded_file:
     df, metadata = parse_single_file(uploaded_file)
     
     if df.empty:
-        st.error("⚠️ ไม่สามารถอ่านข้อมูลจากไฟล์ที่อัปโหลดได้ กรุณาตรวจสอบว่าเป็นไฟล์ CSV จาก Datapaq หรือไม่")
+        st.error("⚠️ ไม่สามารถอ่านข้อมูลจากไฟล์ที่อัปโหลดได้ กรุณาตรวจสอบว่าเป็นไฟล์ CSV จาก Datapaqหรือไม่")
     else:
         st.sidebar.success(f"โหลดไฟล์ {uploaded_file.name} สำเร็จ ({len(df)} แถว)")
 
@@ -458,16 +459,17 @@ if uploaded_file:
                 </div>
             """, unsafe_allow_html=True)
 
-        # สร้างกราฟ Plotly
+        # สร้างกราฟ Plotly (รองรับสูงสุด 10 สีโพรบ)
         fig = make_subplots(specs=[[{"secondary_y": False}]])
         
         probe_colors = [
             "#FF0000", "#00FF00", "#0000FF", "#8B4513", 
-            "#FF00FF", "#DAA520", "#800080", "#00FFFF"
+            "#FF00FF", "#DAA520", "#800080", "#00FFFF",
+            "#FF7F50", "#008080"
         ]
 
         probe_cols = [c for c in df_chart.columns if c.startswith("Probe #")]
-        for idx, col in enumerate(probe_cols[:8]):
+        for idx, col in enumerate(probe_cols):
             fig.add_trace(
                 go.Scatter(
                     x=df_chart["Time (HH:MM:SS)"],
@@ -488,7 +490,7 @@ if uploaded_file:
             )
         )
 
-        # แสดงแถบสีพื้นหลังตามโหมดที่ผู้ใช้เลือกใน Sidebar
+        # แสดงแถบสีพื้นหลัง
         for idx, z_item in enumerate(zones_data):
             start_t = z_item["Start Time"]
             end_t = z_item["End Time"]
@@ -519,13 +521,11 @@ if uploaded_file:
                 textangle=angle_setting
             )
 
-        # คำนวณช่วง Tick สำหรับแกน Time ให้เหมาะสม
         step_tick = max(1, len(df_chart) // 16)
         tick_indices = list(range(0, len(df_chart), step_tick))
         if (len(df_chart) - 1) not in tick_indices and len(df_chart) > 0:
             tick_indices.append(len(df_chart) - 1)
             
-        # สร้างรายการ Tick สำหรับแกน Distance โดยเฉพาะ
         max_dist = df_chart["Distance (m)"].max() if not df_chart.empty else 50.0
         if max_dist <= 20:
             dist_dtick = 1.0
@@ -580,20 +580,16 @@ if uploaded_file:
                 overlaying="x",
                 anchor="free",
                 position=0.00,
-                
                 tickmode="linear",
                 tick0=0,
                 dtick=dist_dtick,
                 tickformat=".2f",
-                
                 range=[0, max_dist],
-                
                 tickfont=dict(color="#F0B90B", size=10),
                 showgrid=False,
                 showline=True,
                 linewidth=1,
                 linecolor="#F0B90B",
-                
                 minor=dict(
                     tickmode="linear",
                     tick0=0,
@@ -612,47 +608,47 @@ if uploaded_file:
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # ---------------------------------------------------------
-        # 📝 กล่องแสดงข้อความ #note #1 ด้านล่างรูปภาพกราฟ
-        # ---------------------------------------------------------
         st.markdown(f"""
             <div class="raw-header-box" style="margin-top: -10px; margin-bottom: 25px;">
                 <div><span class="raw-header-key">#note #1</span> = <span class="raw-header-val">{metadata.get('note_1', '-')}</span></div>
             </div>
         """, unsafe_allow_html=True)
 
-        # ---------------------------------------------------------
-        # 📊 ตารางสรุปค่า
-        # ---------------------------------------------------------
+        # 📊 ตารางสรุปผลการวิเคราะห์
         st.markdown("### 📊 ตารางสรุปผลการวิเคราะห์ (Data Table for Google Sheets Copy)")
 
-        # 📌 จำกัดขอบเขตเวลาของ Dryer ที่ 300 วินาทีตามสเปกมาตรฐาน
         dryer_max_sec = 300 
         
         dryer_subset = df[(df["ElapsedSeconds"] >= 0) & (df["ElapsedSeconds"] <= dryer_max_sec)]
         brazing_ht_subset = df[(df["ElapsedSeconds"] >= 0)]
         brazing_max_subset = df[(df["ElapsedSeconds"] >= 900) & (df["ElapsedSeconds"] <= 1750)]
 
-        probe_order = [1, 2, 3, 4, 5, 6, 7, 8]
+        total_probes_count = len(probe_cols)
+        probe_order = list(range(1, total_probes_count + 1))
+        
         ordered_cols = []
         for p_num in probe_order:
-            for c in probe_cols[:8]:
-                if f"Probe #{p_num}" in c or f"Probe #{p_num}:" in c:
+            for c in probe_cols:
+                if c.startswith(f"Probe #{p_num}:") or c == f"Probe #{p_num}":
                     ordered_cols.append((p_num, c))
                     break
 
         summary_rows = []
         for p_num, col_name in ordered_cols:
-            if p_num in [1, 2]:
-                location = "Core Right"
-            elif p_num in [3, 4, 5]:
-                location = "Core Middle"
+            # การแบ่งประเภท Location ตามจำนวนโพรบ (8 vs 10 Probes)
+            if total_probes_count >= 10:
+                location = "R" if p_num <= 5 else "L"
             else:
-                location = "Core Left"
+                if p_num in [1, 2]:
+                    location = "Core Right"
+                elif p_num in [3, 4, 5]:
+                    location = "Core Middle"
+                else:
+                    location = "Core Left"
 
             short_pb_name = f"PB#{p_num}"
             
-            # Max Temp (รองรับกรณีสายหลุดเป็น NaN)
+            # Max Temp
             br_val = brazing_max_subset[col_name].max() if not brazing_max_subset.empty else np.nan
             br_max = f"{br_val:.1f}" if pd.notna(br_val) else "-"
             
@@ -695,7 +691,7 @@ if uploaded_file:
 
         st.dataframe(display_summary_df, use_container_width=True, hide_index=True)
 
-        # คำอธิบายเกณฑ์มาตรฐาน (Process Standards Legend)
+        # คำอธิบายเกณฑ์มาตรฐาน
         st.markdown("""
             <div style="background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px 18px; font-size: 13px; color: #CCCCCC; margin-top: 10px;">
                 <b style="color: #F0B90B;">📌 เกณฑ์มาตรฐานอ้างอิง (Process Standards):</b><br>
@@ -705,7 +701,7 @@ if uploaded_file:
             </div>
         """, unsafe_allow_html=True)
 
-        # ส่วนตรวจสอบและเลือกดาวน์โหลด Excel (.xlsx)
+        # ส่วนดาวน์โหลด Excel
         with st.expander("📋 ตรวจสอบและเลือกดาวน์โหลดตารางข้อมูล Excel (.xlsx)"):
             st.dataframe(df)
             
@@ -716,7 +712,7 @@ if uploaded_file:
             with col_opt1:
                 custom_filename = st.text_input(
                     "ตั้งชื่อไฟล์ดาวน์โหลด:", 
-                    value="datapaq_nb3_ke8_8probes_data.xlsx"
+                    value="datapaq_nb3_ke8_summary.xlsx"
                 )
                 if not custom_filename.endswith('.xlsx'):
                     custom_filename += '.xlsx'
