@@ -242,6 +242,7 @@ def parse_single_file(uploaded_file):
         "paqfile start date": "-",
         "paqfile start time": "-",
         "title": "-",
+        "logger": "-",
         "operator": "-",
         "product": "EVAPORATOR",
         "site": "VSTS / Power Chonburi",
@@ -265,6 +266,8 @@ def parse_single_file(uploaded_file):
                     metadata["paqfile start date"] = val
                 elif key.lower() == "paqfile start time":
                     metadata["paqfile start time"] = val
+                elif "logger" in key.lower():
+                    metadata["logger"] = val
                 elif key.lower() == "operator":
                     metadata["operator"] = val
                 elif key.lower() == "product":
@@ -450,6 +453,7 @@ if uploaded_file:
         with col_h2:
             st.markdown(f"""
                 <div class="raw-header-box">
+                    <div><span class="raw-header-key">#logger s/n</span> = <span class="raw-header-val">{metadata.get('logger', '-')}</span></div>
                     <div><span class="raw-header-key">#operator</span> = <span class="raw-header-val">{metadata.get('operator', '-')}</span></div>
                     <div><span class="raw-header-key">#product</span> = <span class="raw-header-val">{metadata.get('product', 'EVAPORATOR')}</span></div>
                     <div><span class="raw-header-key">#site</span> = <span class="raw-header-val">{metadata.get('site', 'VSTS / Power Chonburi')}</span></div>
@@ -683,7 +687,6 @@ if uploaded_file:
 
         display_summary_df = pd.DataFrame(summary_rows, columns=multi_cols)
 
-        # 📌 คำนวณความสูงตารางแบบไดนามิก เพื่อให้แสดงผลครบทุกแถว (รวม Header 2 ชั้น) โดยไม่ต้องมี Scrollbar
         dynamic_table_height = (len(display_summary_df) + 2) * 38 + 25
 
         st.dataframe(
