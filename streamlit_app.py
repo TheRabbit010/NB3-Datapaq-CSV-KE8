@@ -122,7 +122,7 @@ st.markdown("""
             color: #ffffff !important;
         }
 
-        /* ปรับแต่งตาราง Dataframe */
+        /* ปรับแต่งตาราง Dataframe & บังคับจัดข้อความ/ตัวเลขทุกช่องให้อยู่ตรงกลางทั้งหมด */
         [data-testid="stDataFrame"], [data-testid="stTable"] {
             background-color: #161b22 !important;
             border: 1px solid #30363d !important;
@@ -217,7 +217,7 @@ def hex_to_rgba(hex_str, opacity=0.25):
     b = int(hex_str[4:6], 16)
     return f"rgba({r}, {g}, {b}, {opacity})"
 
-# 5. ฟังก์ชันอ่านไฟล์ CSV แบบรองรับสถานะ *OC* และอ่านโพรบแบบไดนามิก (รองรับได้สูงสุด 10 โพรบ)
+# 5. ฟังก์ชันอ่านไฟล์ CSV แบบรองรับสถานะ *OC* (Open Circuit) และอ่านโพรบสูงสุด 10 โพรบ
 def parse_single_file(uploaded_file):
     uploaded_file.seek(0)
     raw_bytes = uploaded_file.read()
@@ -296,9 +296,8 @@ def parse_single_file(uploaded_file):
                     except ValueError:
                         dist_val = 0.0
                         
-                    # อ่านค่าโพรบทั้งหมดจากส่วนที่เหลือ (รองรับสูงสุด 10 โพรบ)
                     probe_vals = []
-                    for p in parts[2:12]:
+                    for p in parts[2:12]:  # รองรับโพรบสูงสุด 10 ช่อง
                         try:
                             probe_vals.append(float(p))
                         except ValueError:
@@ -316,9 +315,8 @@ def parse_single_file(uploaded_file):
     if not data_rows:
         return pd.DataFrame(), metadata
 
-    # คำนวณจำนวนโพรบที่มีจริงในไฟล์
     max_probes = max(len(r["probes"]) for r in data_rows)
-    max_probes = max(max_probes, 8)  # อย่างน้อย 8 โพรบ
+    max_probes = max(max_probes, 8)
 
     parsed_data = []
     for row in data_rows:
@@ -384,12 +382,12 @@ uploaded_file = st.sidebar.file_uploader(
     accept_multiple_files=False
 )
 
-# 7. แสดงผล Header Metadata + กราฟพร้อมตารางสรุป
+# 7. แสดงผล Header Metadata + กราฟพร้อมโซนเวลา
 if uploaded_file:
     df, metadata = parse_single_file(uploaded_file)
     
     if df.empty:
-        st.error("⚠️ ไม่สามารถอ่านข้อมูลจากไฟล์ที่อัปโหลดได้ กรุณาตรวจสอบว่าเป็นไฟล์ CSV จาก Datapaqหรือไม่")
+        st.error("⚠️ ไม่สามารถอ่านข้อมูลจากไฟล์ที่อัปโหลดได้ กรุณาตรวจสอบว่าเป็นไฟล์ CSV จาก Datapaq หรือไม่")
     else:
         st.sidebar.success(f"โหลดไฟล์ {uploaded_file.name} สำเร็จ ({len(df)} แถว)")
 
@@ -434,7 +432,6 @@ if uploaded_file:
             ]
             angle_setting = 0
 
-        # ตัดข้อมูลกราฟหลังช่วง Exit ออก
         exit_end_seconds = time_str_to_seconds(zones_data[-1]["End Time"])
         df_chart = df[df["ElapsedSeconds"] <= exit_end_seconds].copy()
         if df_chart.empty:
@@ -459,7 +456,6 @@ if uploaded_file:
                 </div>
             """, unsafe_allow_html=True)
 
-        # สร้างกราฟ Plotly (รองรับสูงสุด 10 สีโพรบ)
         fig = make_subplots(specs=[[{"secondary_y": False}]])
         
         probe_colors = [
@@ -490,7 +486,6 @@ if uploaded_file:
             )
         )
 
-        # แสดงแถบสีพื้นหลัง
         for idx, z_item in enumerate(zones_data):
             start_t = z_item["Start Time"]
             end_t = z_item["End Time"]
@@ -635,7 +630,6 @@ if uploaded_file:
 
         summary_rows = []
         for p_num, col_name in ordered_cols:
-            # การแบ่งประเภท Location ตามจำนวนโพรบ (8 vs 10 Probes)
             if total_probes_count >= 10:
                 location = "R" if p_num <= 5 else "L"
             else:
@@ -689,7 +683,15 @@ if uploaded_file:
 
         display_summary_df = pd.DataFrame(summary_rows, columns=multi_cols)
 
-        st.dataframe(display_summary_df, use_container_width=True, hide_index=True)
+        # 📌 คำนวณความสูงตารางแบบไดนามิก เพื่อให้แสดงผลครบทุกแถว (รวม Header 2 ชั้น) โดยไม่ต้องมี Scrollbar
+        dynamic_table_height = (len(display_summary_df) + 2) * 38 + 25
+
+        st.dataframe(
+            display_summary_df, 
+            use_container_width=True, 
+            hide_index=True,
+            height=dynamic_table_height
+        )
 
         # คำอธิบายเกณฑ์มาตรฐาน
         st.markdown("""
