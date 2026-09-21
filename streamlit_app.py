@@ -243,31 +243,36 @@ def is_ke8_param_pass(val, param_type, is_evo=False):
             sec = parse_time_to_sec(val)
             if sec is None:
                 return True
-            return 90 <= sec <= 240  # Above 591°C: 1:30 - 4:00 min
+            # Above 591°C: 1:30 - 4:00 min (90s - 240s)
+            return 90 <= sec <= 240
 
         elif param_type == "br_577":
             sec = parse_time_to_sec(val)
             if sec is None:
                 return True
-            return 270 <= sec <= 420  # Above 577°C: 4:30 - 7:00 min
+            # Above 577°C: 4:30 - 7:00 min (270s - 420s)
+            return 270 <= sec <= 420
 
         elif param_type == "br_550":
             sec = parse_time_to_sec(val)
             if sec is None:
                 return True
-            return 420 <= sec <= 630  # Above 550°C: 7:00 - 10:30 min
+            # Above 550°C: 7:00 - 10:30 min (420s - 630s)
+            return 420 <= sec <= 630
 
         elif param_type == "dr_200":
             sec = parse_time_to_sec(val)
             if sec is None:
                 return True
-            return sec > 90  # Above 200°C: > 1:30 min
+            # Above 200°C: > 1:30 min (> 90s)
+            return sec > 90
 
         elif param_type == "dr_150":
             sec = parse_time_to_sec(val)
             if sec is None:
                 return True
-            return sec > 105  # Above 150°C: > 1:45 min
+            # Above 150°C: > 1:45 min (> 105s)
+            return sec > 105
 
     except Exception:
         return True
@@ -444,6 +449,7 @@ def parse_single_file(uploaded_file):
     if not data_rows:
         return pd.DataFrame(), metadata
 
+    # คำนวณจำนวนโพรบสูงสุดจากข้อมูลไดนามิก
     max_raw_len = max(len(r["raw_vals"]) for r in data_rows) if data_rows else 0
     all_probe_nums = (
         [max_raw_len, num_channels] +
@@ -958,7 +964,7 @@ if uploaded_file:
             st.markdown(
                 """
                 <div style="background-color: #1c2b21; border: 1px solid #2ea043; border-radius: 6px; padding: 10px 16px; color: #7ee787; font-weight: bold; margin-bottom: 12px; font-size: 14px;">
-                    ✅ ผลการตรวจสอบ: ทุกค่าอยู่ในเกณฑ์มาตรฐานอ้างอิง Process Standards KE8 (Pass 100%)
+                    ✅ ผลการตรวจสอบ: ทุกค่าอยู่ในเกณฑ์มาตรฐานอ้างอิงภายใน VSTS (Process Standards) KE8 (Pass 100%)
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1029,11 +1035,11 @@ if uploaded_file:
             height=dynamic_table_height,
         )
 
-        # 📌 คำอธิบายเกณฑ์มาตรฐานอ้างอิง KE8
+        # 📌 คำอธิบายเกณฑ์มาตรฐานอ้างอิงภายใน VSTS (Process Standards) KE8
         st.markdown(
             """
             <div style="background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 14px 18px; font-size: 13px; color: #CCCCCC; margin-top: 10px; line-height: 1.6;">
-                <b style="color: #F0B90B;">📌 เกณฑ์มาตรฐานอ้างอิง (Process Standards):</b><br>
+                <b style="color: #F0B90B;">📌 เกณฑ์มาตรฐานอ้างอิงภายใน VSTS (Process Standards):</b><br>
                 • <b>Maximum Temperatures (°C):</b> Brazing Zone: <b>598 - 606 °C for EVO</b> | <b>595 - 606 °C for M2</b> | Dryer Zone: <b>200 - 375 °C</b><br>
                 • <b>Brazing Dwell Time:</b> Above 591°C: <b>1:30 - 4:00 min (90s - 240s)</b> | Above 577°C: <b>4:30 - 7:00 min (270s - 420s)</b> | Above 550°C: <b>7:00 - 10:30 min (420s - 630s)</b><br>
                 • <b>Dryer Dwell Time:</b> Above 200°C: <b>> 1:30 min (>90s)</b> | Above 150°C: <b>> 1:45 min (>105s)</b>
